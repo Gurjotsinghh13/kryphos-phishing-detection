@@ -41,3 +41,7 @@ frontend/dist/
 # =========================
 Thumbs.db
 .DS_Store
+
+*.mbox
+backend/data/
+ml/models/
