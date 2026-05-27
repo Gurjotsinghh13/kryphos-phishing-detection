@@ -1,49 +1,43 @@
-__pycache__/ 
-*.pkl 
-node_modules/ 
+# =========================
 # Python
+# =========================
+backend/venv/
 venv/
 __pycache__/
 *.pyc
 
+# =========================
 # ML Models
+# =========================
 *.pkl
 *.joblib
 
-# Dataset
-*.csv
-
-# Node
-node_modules/
-
-# Environment
-.env
-
-# Vite
-dist/
-
-# OS
-.DS_Store
-Thumbs.db
-# Python
-backend/venv/
-__pycache__/
-*.pyc
-
-# ML Models
-*.pkl
-*.joblib
-
+# =========================
 # Datasets
+# =========================
 *.csv
+*.zip
+*.gz
 
+# =========================
 # Frontend
+# =========================
 frontend/node_modules/
 frontend/dist/
 
+# =========================
 # Environment
+# =========================
 .env
 
+# =========================
+# IDE
+# =========================
+.vscode/
+.idea/
+
+# =========================
 # OS
+# =========================
 Thumbs.db
 .DS_Store
