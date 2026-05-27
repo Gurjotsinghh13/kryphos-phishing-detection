@@ -1,0 +1,76 @@
+# backend/app/analyzer.py
+import sys, os
+
+# Fix import paths so ml modules are always found
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'ml'))
+
+from app.url_analyzer import extract_url_features
+from ml.preprocessing import extract_phishing_features, URGENCY_WORDS, THREAT_WORDS
+from ml.pipeline import predict_blended
+
+
+def analyze_email(subject: str, body: str,
+                  urls: list, base_model) -> dict:
+    """
+    Core analysis function.
+    Combines ML prediction + URL scoring + keyword detection
+    into a single result dictionary.
+    """
+    full_text = f"{subject} {body}"
+
+    # ── 1. Blended ML prediction (base Random Forest + online SGD) ────────────
+    prob_phishing, model_source = predict_blended(full_text, base_model)
+    prediction = "phishing" if prob_phishing > 0.5 else "legitimate"
+    confidence = round(max(prob_phishing, 1 - prob_phishing) * 100, 1)
+
+    # ── 2. URL analysis ───────────────────────────────────────────────────────
+    url_results    = []
+    suspicious_urls = []
+
+    for url in (urls or []):
+        if not url or not isinstance(url, str):
+            continue
+        feats = extract_url_features(url)
+        score = (
+            feats.get("is_ip_address",   0) * 30 +
+            feats.get("suspicious_tld",  0) * 25 +
+            feats.get("phish_word_count",0) * 10 +
+            feats.get("is_shortener",    0) * 20 +
+            (1 - feats.get("is_https",   1)) * 15 +
+            min(feats.get("subdomain_count", 0) * 5, 20)
+        )
+        entry = {"url": url, "score": round(score, 1), "features": feats}
+        url_results.append(entry)
+        if score >= 30:
+            suspicious_urls.append(entry)
+
+    # ── 3. Keyword analysis ───────────────────────────────────────────────────
+    text_lower    = full_text.lower()
+    found_urgency = [w for w in URGENCY_WORDS if w in text_lower]
+    found_threats = [w for w in THREAT_WORDS  if w in text_lower]
+    all_keywords  = list(set(found_urgency + found_threats))
+
+    # ── 4. Composite risk score ───────────────────────────────────────────────
+    risk = prob_phishing * 60
+    risk += min(len(suspicious_urls) * 15, 30)
+    risk += min(len(found_urgency)   * 2,  10)
+    risk  = round(min(risk, 100), 1)
+
+    risk_level = (
+        "high"   if risk >= 65 else
+        "medium" if risk >= 35 else
+        "low"
+    )
+
+    return {
+        "prediction":       prediction,
+        "confidence":       confidence,
+        "risk_score":       risk,
+        "risk_level":       risk_level,
+        "model_source":     model_source,
+        "flagged_keywords": all_keywords,
+        "suspicious_urls":  suspicious_urls,
+        "url_analysis":     url_results,
+        "prob_phishing":    round(prob_phishing, 4),
+    }
