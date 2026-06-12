@@ -55,7 +55,7 @@ export default function Auth() {
             <div className="absolute inset-0 rounded-2xl animate-spin-slow"
               style={{background:"conic-gradient(from 0deg,rgba(34,211,238,0.1),transparent,rgba(59,130,246,0.1),transparent)"}} />
           </div>
-          <h1 className="text-2xl font-bold text-white mb-1">PhishGuard <span className="grad-text">AI</span></h1>
+          <h1 className="text-2xl font-bold text-white mb-1">Kryphos <span className="grad-text">AI</span></h1>
           <p className="text-[var(--text-secondary)] text-sm">Advanced email threat detection platform</p>
         </div>
 

@@ -143,7 +143,7 @@ export default function Analyzer() {
         { responseType:"blob" }
       )
       const url = window.URL.createObjectURL(new Blob([res.data]))
-      const a = document.createElement("a"); a.href=url; a.download="phishguard_report.pdf"; a.click()
+      const a = document.createElement("a"); a.href=url; a.download="kryphos_ai_report.pdf"; a.click()
     } catch { alert("Could not generate report.") }
     finally { setRepLoading(false) }
   }

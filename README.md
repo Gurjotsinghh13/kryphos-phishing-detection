@@ -1,7 +1,7 @@
-# PhishGuard AI — Phishing Email Detection System
+# Kryphos AI - AI-Powered Phishing Email Detection Platform
 
 ## Overview
-An AI-powered web application that detects phishing emails using
+Kryphos AI is an AI-powered web application that detects phishing emails using
 Natural Language Processing and Machine Learning. Built with
 FastAPI (backend), React + Tailwind CSS (frontend), and
 scikit-learn (ML pipeline).

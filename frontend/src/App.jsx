@@ -25,7 +25,7 @@ function SidebarContent({ collapsed, setCollapsed, pathname, logout }) {
         </div>
         {!collapsed && (
           <div>
-            <p className="font-bold text-sm text-white tracking-wide">PhishGuard</p>
+            <p className="font-bold text-sm text-white tracking-wide">Kryphos AI</p>
             <p className="text-[10px] text-cyan-400/70 tracking-widest uppercase">AI Security</p>
           </div>
         )}
@@ -116,7 +116,7 @@ function Layout({ children }) {
         <header className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)] glass flex-shrink-0">
           <div>
             <h1 className="text-base font-semibold text-white">{titles[location.pathname]}</h1>
-            <p className="text-xs text-[var(--text-secondary)] mt-0.5">PhishGuard AI Security Platform</p>
+            <p className="text-xs text-[var(--text-secondary)] mt-0.5">Kryphos AI Security Platform</p>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 bg-green-400/10 border border-green-400/20 px-3 py-1.5 rounded-full">

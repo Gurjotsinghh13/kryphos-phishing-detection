@@ -3,14 +3,24 @@
 # =========================
 backend/venv/
 venv/
+.venv/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # =========================
 # ML Models
 # =========================
 *.pkl
 *.joblib
+backend/ml/models/online_model.pkl
+backend/ml/models/retrain_log.json
 
 # =========================
 # Datasets
@@ -18,17 +28,30 @@ __pycache__/
 *.csv
 *.zip
 *.gz
+*.mbox
+backend/data/raw/
+backend/data/processed/
 
 # =========================
 # Frontend
 # =========================
 frontend/node_modules/
 frontend/dist/
+frontend/.vite/
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
 
 # =========================
 # Environment
 # =========================
 .env
+.env.*
+!.env.example
+frontend/.env.local
+frontend/.env.*.local
+backend/.env
 
 # =========================
 # IDE
@@ -41,7 +64,17 @@ frontend/dist/
 # =========================
 Thumbs.db
 .DS_Store
+Microsoft/Windows/PowerShell/ModuleAnalysisCache
 
-*.mbox
-backend/data/
-ml/models/
+# =========================
+# Local Runtime
+# =========================
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-shm
+*.db-wal
+backend/phishing.db
+logs/
+*.log
