@@ -24,7 +24,7 @@ class ScanRecord(Base):
     confidence      = Column(Float,   default=0.0)
     risk_level      = Column(String,  default="low")
     risk_score      = Column(Float,   default=0.0)
-    confirmed_label = Column(Integer, default=None)  # NEW: set after feedback
+    confirmed_label = Column(Integer, nullable=True)  # NEW: set after feedback
     created_at      = Column(DateTime, default=datetime.utcnow)
     user            = relationship("User", back_populates="scans")
     feedback        = relationship("FeedbackRecord", back_populates="scan")

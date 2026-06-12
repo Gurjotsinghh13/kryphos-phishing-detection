@@ -1,23 +1,14 @@
-# docker-compose.yml
-version: "3.9"
-
 services:
   backend:
-    build: ./backend
-    ports: ["8000:8000"]
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      ENV: development
+      SECRET_KEY: local-docker-secret-change-me
+      DATABASE_URL: sqlite:///./phishing.db
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
     volumes:
-      - ./backend/data:/app/data
-      - ./backend/ml/models:/app/ml/models
-    environment:
-      - SECRET_KEY=${SECRET_KEY}
-      - DATABASE_URL=sqlite:///./phishing.db
-      - DEBUG=false
-    restart: unless-stopped
-
-  frontend:
-    build: ./frontend
-    ports: ["3000:80"]
-    environment:
-      - VITE_API_URL=http://localhost:8000
-    depends_on: [backend]
+      - ./data:/app/data
+      - ./ml/models:/app/ml/models
     restart: unless-stopped

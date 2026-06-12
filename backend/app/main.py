@@ -3,6 +3,8 @@
 import sys
 import os
 import pickle
+import logging
+from typing import List
 
 # Fix import paths
 BASE_DIR = os.path.dirname(
@@ -24,6 +26,7 @@ from fastapi import (
     Depends,
     HTTPException,
     BackgroundTasks,
+    status,
 )
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -43,6 +46,7 @@ from app.database import (
 from app.auth import (
     router as auth_router,
     get_current_user,
+    require_admin,
 )
 
 from app.schemas import (
@@ -50,6 +54,7 @@ from app.schemas import (
     AnalyzeResponse,
     FeedbackRequest,
     FeedbackResponse,
+    ScanHistoryItem,
 )
 
 from app.analyzer import analyze_email
@@ -68,11 +73,14 @@ from ml.learner import (
     RETRAIN_EVERY,
 )
 
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
-    print("\nLoading database and ML model...\n")
+    logger.info("Initializing database and ML model")
 
     Base.metadata.create_all(bind=engine)
 
@@ -84,15 +92,17 @@ async def lifespan(app: FastAPI):
         "best_model.pkl"
     )
 
-    app.state.model = pickle.load(
-        open(model_path, "rb")
-    )
+    if not os.path.exists(model_path):
+        raise RuntimeError(f"Model file not found: {model_path}")
 
-    print("Model loaded successfully.\n")
+    with open(model_path, "rb") as model_file:
+        app.state.model = pickle.load(model_file)
+
+    logger.info("Model loaded successfully from %s", model_path)
 
     yield
 
-    print("Shutting down server...\n")
+    logger.info("Shutting down server")
 
 
 # FastAPI app
@@ -105,18 +115,23 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+def _cors_origins() -> list[str]:
+    configured = os.getenv("CORS_ORIGINS")
+    if configured:
+        return [origin.strip().rstrip("/") for origin in configured.split(",") if origin.strip()]
+    return [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://kryphos-phishing-detection.vercel.app",
+    ]
+
+
 # CORS
 app.add_middleware(
 
     CORSMiddleware,
 
-    allow_origins=[
-
-        "http://localhost:5173",
-
-        "https://kryphos-phishing-detection.vercel.app/"
-
-    ],
+    allow_origins=_cors_origins(),
 
     allow_credentials=True,
 
@@ -156,17 +171,19 @@ async def analyze(
 
     db=Depends(get_db)
 ):
-
-    result = analyze_email(
-
-        req.subject,
-
-        req.body,
-
-        req.urls,
-
-        app.state.model
-    )
+    try:
+        result = analyze_email(
+            req.subject,
+            req.body,
+            req.urls,
+            app.state.model
+        )
+    except Exception as exc:
+        logger.exception("Email analysis failed for user_id=%s", current_user.id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Email analysis failed",
+        ) from exc
 
     record = ScanRecord(
 
@@ -189,7 +206,15 @@ async def analyze(
 
     db.add(record)
 
-    db.commit()
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.exception("Failed to save scan for user_id=%s", current_user.id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not save scan",
+        ) from exc
 
     db.refresh(record)
 
@@ -249,12 +274,16 @@ async def submit_feedback(
     )
 
     db.add(fb)
-
-    db.commit()
-
     scan.confirmed_label = req.true_label
-
-    db.commit()
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.exception("Failed to save feedback for scan_id=%s", req.scan_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not save feedback",
+        ) from exc
 
     full_text = f"{scan.subject} {scan.body}"
 
@@ -305,15 +334,18 @@ async def dashboard(
     db=Depends(get_db)
 ):
 
-    scans = db.query(
-        ScanRecord
-    ).filter_by(
+    scans = (
+        db.query(ScanRecord)
+        .filter(ScanRecord.user_id == current_user.id)
+        .order_by(ScanRecord.created_at.desc())
+        .all()
+    )
 
-        user_id=current_user.id
-
-    ).all()
-
-    fb_count = get_feedback_count()
+    fb_count = (
+        db.query(FeedbackRecord)
+        .filter(FeedbackRecord.user_id == current_user.id)
+        .count()
+    )
 
     return {
 
@@ -335,16 +367,29 @@ async def dashboard(
         "feedback_submitted":
             fb_count,
 
-        "recent":
-            [
-                s.to_dict()
-                for s in sorted(
-                    scans,
-                    key=lambda x: x.created_at,
-                    reverse=True
-                )[:5]
-            ]
+        "recent": [s.to_dict() for s in scans[:5]]
     }
+
+
+# =====================================================
+# History
+# =====================================================
+
+@app.get(
+    "/history",
+    response_model=List[ScanHistoryItem],
+)
+async def history(
+    current_user=Depends(get_current_user),
+    db=Depends(get_db),
+):
+    scans = (
+        db.query(ScanRecord)
+        .filter(ScanRecord.user_id == current_user.id)
+        .order_by(ScanRecord.created_at.desc())
+        .all()
+    )
+    return [scan.to_dict() for scan in scans]
 
 
 # =====================================================
@@ -358,7 +403,7 @@ async def manual_retrain(
     background_tasks: BackgroundTasks,
 
     current_user=Depends(
-        get_current_user
+        require_admin
     )
 ):
 
@@ -386,26 +431,32 @@ async def download_report(
         get_current_user
     )
 ):
+    try:
+        result = analyze_email(
+            req.subject,
+            req.body,
+            req.urls,
+            app.state.model
+        )
+    except Exception as exc:
+        logger.exception("Report analysis failed for user_id=%s", current_user.id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not generate report",
+        ) from exc
 
-    result = analyze_email(
-
-        req.subject,
-
-        req.body,
-
-        req.urls,
-
-        app.state.model
-    )
-
-    pdf = generate_pdf_report(
-
-        result,
-
-        req.subject,
-
-        current_user.email
-    )
+    try:
+        pdf = generate_pdf_report(
+            result,
+            req.subject,
+            current_user.email
+        )
+    except Exception as exc:
+        logger.exception("PDF generation failed for user_id=%s", current_user.id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not generate report",
+        ) from exc
 
     return StreamingResponse(
 

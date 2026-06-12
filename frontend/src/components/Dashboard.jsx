@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts"
 import api from "../api"
-import { ShieldAlert, ShieldCheck, Mail, MessageSquare, RefreshCw, TrendingUp, Activity, ArrowUpRight } from "lucide-react"
+import { ShieldAlert, ShieldCheck, Mail, MessageSquare, RefreshCw, TrendingUp, Activity } from "lucide-react"
 
 function StatCard({ icon: Icon, label, value, color, loading }) {
   const C = {
@@ -70,7 +70,11 @@ export default function Dashboard() {
 
   const manualRetrain = async () => {
     setRetraining(true)
-    try { await api.post("/admin/retrain") } catch(e) {}
+    try {
+      await api.post("/admin/retrain")
+    } catch {
+      // Keep the dashboard usable if retraining is denied or unavailable.
+    }
     setTimeout(() => setRetraining(false), 3000)
   }
 

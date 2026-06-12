@@ -1,128 +1,167 @@
 # backend/ml/learner.py
-# Online Learning Engine — retrains model as users give feedback
-import pickle, os, threading, json
+import json
+import logging
+import pickle
+import threading
 from datetime import datetime
-from collections import deque
+from pathlib import Path
+
 import pandas as pd
-from sklearn.linear_model import SGDClassifier
 from sklearn.feature_extraction.text import HashingVectorizer
+from sklearn.linear_model import SGDClassifier
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import LabelEncoder
+
 from ml.preprocessing import clean_text
 
-FEEDBACK_FILE  = "data/processed/feedback.csv"
-ONLINE_MODEL   = "ml/models/online_model.pkl"
-RETRAIN_EVERY  = 10   # retrain after every N feedback submissions
-_lock          = threading.Lock()
+logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# SGDClassifier supports partial_fit() — true online learning
-# HashingVectorizer is stateless (no vocabulary to update), perfect for streaming
-# ---------------------------------------------------------------------------
-def build_online_pipeline():
-    return Pipeline([
-        ("vec", HashingVectorizer(
-            preprocessor=clean_text,
-            ngram_range=(1, 2),
-            n_features=2**18,      # fixed feature space, no refit needed
-            alternate_sign=False,
-        )),
-        ("clf", SGDClassifier(
-            loss="log_loss",       # gives predict_proba support
-            penalty="l2",
-            alpha=1e-4,
-            max_iter=1,
-            tol=None,
-            warm_start=True,
-            class_weight="balanced",
-            random_state=42,
-        )),
-    ])
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+FEEDBACK_FILE = BACKEND_DIR / "data" / "processed" / "feedback.csv"
+ONLINE_MODEL = BACKEND_DIR / "ml" / "models" / "online_model.pkl"
+RETRAIN_LOG = BACKEND_DIR / "ml" / "models" / "retrain_log.json"
+RETRAIN_EVERY = 10
+_lock = threading.Lock()
+
+
+def build_online_pipeline() -> Pipeline:
+    return Pipeline(
+        [
+            (
+                "vec",
+                HashingVectorizer(
+                    preprocessor=clean_text,
+                    ngram_range=(1, 2),
+                    n_features=2**18,
+                    alternate_sign=False,
+                ),
+            ),
+            (
+                "clf",
+                SGDClassifier(
+                    loss="log_loss",
+                    penalty="l2",
+                    alpha=1e-4,
+                    max_iter=1,
+                    tol=None,
+                    warm_start=True,
+                    random_state=42,
+                ),
+            ),
+        ]
+    )
+
 
 def load_online_model() -> Pipeline:
-    """Load existing online model or create fresh one."""
-    if os.path.exists(ONLINE_MODEL):
-        with _lock:
-            return pickle.load(open(ONLINE_MODEL, "rb"))
+    """Load existing online model or create a fresh one."""
+    with _lock:
+        if ONLINE_MODEL.exists():
+            with ONLINE_MODEL.open("rb") as model_file:
+                return pickle.load(model_file)
     return build_online_pipeline()
 
+
 def save_online_model(model: Pipeline):
-    os.makedirs("ml/models", exist_ok=True)
+    ONLINE_MODEL.parent.mkdir(parents=True, exist_ok=True)
     with _lock:
-        pickle.dump(model, open(ONLINE_MODEL, "wb"))
+        with ONLINE_MODEL.open("wb") as model_file:
+            pickle.dump(model, model_file)
+
 
 def log_feedback(text: str, true_label: int):
-    """
-    Append one labelled sample to feedback CSV.
-    true_label: 1 = phishing, 0 = legitimate
-    """
-    os.makedirs("data/processed", exist_ok=True)
-    row = pd.DataFrame([{"text": text, "label": true_label,
-                          "ts": datetime.utcnow().isoformat()}])
-    row.to_csv(FEEDBACK_FILE, mode="a",
-               header=not os.path.exists(FEEDBACK_FILE), index=False)
+    """Append one labelled sample to the feedback CSV."""
+    FEEDBACK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    row = pd.DataFrame(
+        [{"text": text, "label": int(true_label), "ts": datetime.utcnow().isoformat()}]
+    )
+    with _lock:
+        row.to_csv(
+            FEEDBACK_FILE,
+            mode="a",
+            header=not FEEDBACK_FILE.exists(),
+            index=False,
+        )
+
 
 def partial_fit_one(text: str, true_label: int):
     """
-    Immediately update the online model with one new labelled sample.
-    This runs in a background thread so the API response is not blocked.
+    Immediately update the online model with one labelled sample.
+    FastAPI runs this function as a BackgroundTask, so no nested thread is needed.
     """
-    def _fit():
-        model = load_online_model()
-        cleaned = clean_text(text)
-        # SGDClassifier needs classes on first call
-        try:
-            model.named_steps["clf"].partial_fit(
-                model.named_steps["vec"].transform([cleaned]),
-                [true_label],
-                classes=[0, 1]
-            )
-        except Exception:
-            # If pipeline not yet fitted, do a cold start with this sample
-            model.fit([cleaned], [true_label])
-        save_online_model(model)
-        log_feedback(text, true_label)
+    label = int(true_label)
+    if label not in (0, 1):
+        raise ValueError("true_label must be 0 or 1")
 
-    t = threading.Thread(target=_fit, daemon=True)
-    t.start()
+    ONLINE_MODEL.parent.mkdir(parents=True, exist_ok=True)
+    with _lock:
+        if ONLINE_MODEL.exists():
+            with ONLINE_MODEL.open("rb") as model_file:
+                model = pickle.load(model_file)
+        else:
+            model = build_online_pipeline()
+
+        vectorized = model.named_steps["vec"].transform([text])
+        model.named_steps["clf"].partial_fit(vectorized, [label], classes=[0, 1])
+
+        with ONLINE_MODEL.open("wb") as model_file:
+            pickle.dump(model, model_file)
+
+        row = pd.DataFrame(
+            [{"text": text, "label": label, "ts": datetime.utcnow().isoformat()}]
+        )
+        row.to_csv(
+            FEEDBACK_FILE,
+            mode="a",
+            header=not FEEDBACK_FILE.exists(),
+            index=False,
+        )
+
+    logger.info("Applied online feedback update label=%s", label)
+
 
 def batch_retrain_from_feedback():
     """
-    Full retrain of the online model from ALL accumulated feedback.
-    Called automatically every RETRAIN_EVERY submissions.
-    Also callable manually via POST /admin/retrain
+    Full retrain of the online model from all accumulated feedback.
+    Called automatically every RETRAIN_EVERY submissions and by admin route.
     """
-    if not os.path.exists(FEEDBACK_FILE):
+    if not FEEDBACK_FILE.exists():
         return {"status": "no feedback yet"}
 
-    df = pd.read_csv(FEEDBACK_FILE).dropna()
+    df = pd.read_csv(FEEDBACK_FILE).dropna(subset=["text", "label"])
     if len(df) < 5:
         return {"status": "not enough feedback", "count": len(df)}
 
     model = build_online_pipeline()
-    BATCH = 64
-    for i in range(0, len(df), BATCH):
-        chunk = df.iloc[i:i+BATCH]
-        X = chunk["text"].tolist()
+    batch_size = 64
+    for start in range(0, len(df), batch_size):
+        chunk = df.iloc[start : start + batch_size]
+        X = chunk["text"].astype(str).tolist()
         y = chunk["label"].astype(int).tolist()
-        try:
-            model.named_steps["clf"].partial_fit(
-                model.named_steps["vec"].transform(X),
-                y, classes=[0, 1]
-            )
-        except Exception:
-            model.fit(X, y)
+        model.named_steps["clf"].partial_fit(
+            model.named_steps["vec"].transform(X),
+            y,
+            classes=[0, 1],
+        )
 
     save_online_model(model)
-    stats = {"status": "retrained", "samples": len(df),
-             "phishing": int(df["label"].sum()),
-             "legitimate": int((df["label"]==0).sum()),
-             "timestamp": datetime.utcnow().isoformat()}
-    json.dump(stats, open("ml/models/retrain_log.json","w"), indent=2)
-    print(f"[Retrain] {stats}")
+    stats = {
+        "status": "retrained",
+        "samples": len(df),
+        "phishing": int(df["label"].astype(int).sum()),
+        "legitimate": int((df["label"].astype(int) == 0).sum()),
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+    RETRAIN_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with RETRAIN_LOG.open("w") as log_file:
+        json.dump(stats, log_file, indent=2)
+    logger.info("Online model retrained: %s", stats)
     return stats
 
+
 def get_feedback_count() -> int:
-    if not os.path.exists(FEEDBACK_FILE): return 0
-    try: return len(pd.read_csv(FEEDBACK_FILE))
-    except: return 0
+    if not FEEDBACK_FILE.exists():
+        return 0
+    try:
+        return len(pd.read_csv(FEEDBACK_FILE))
+    except Exception:
+        logger.exception("Could not read feedback count")
+        return 0

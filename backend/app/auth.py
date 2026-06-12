@@ -1,4 +1,6 @@
 # backend/app/auth.py
+import logging
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -9,15 +11,28 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User
 from app.schemas import UserCreate, Token
-import os
 
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-in-production")
+logger = logging.getLogger(__name__)
+
+ENV = os.getenv("ENV", "development").lower()
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    if ENV == "production":
+        raise RuntimeError("SECRET_KEY must be set in production")
+    SECRET_KEY = "local-dev-secret-change-me"
+    logger.warning("Using local development SECRET_KEY fallback")
+
 ALGORITHM  = "HS256"
 TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 
 pwd_context   = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 router        = APIRouter()
+
+
+def _admin_emails() -> set[str]:
+    raw = os.getenv("ADMIN_EMAILS", "")
+    return {email.strip().lower() for email in raw.split(",") if email.strip()}
 
 # ── Password helpers ──────────────────────────────────────────────────────────
 
@@ -56,6 +71,21 @@ def get_current_user(
     if user is None:
         raise credentials_exception
     return user
+
+
+def require_admin(current_user=Depends(get_current_user)):
+    admins = _admin_emails()
+    if admins:
+        if current_user.email.lower() in admins:
+            return current_user
+    elif ENV != "production":
+        logger.warning("ADMIN_EMAILS is unset; allowing admin route in development")
+        return current_user
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Admin privileges required",
+    )
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 

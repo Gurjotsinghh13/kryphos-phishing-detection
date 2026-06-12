@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+venv/
+.venv/
+phishing.db
+data/raw/
+data/processed/*.csv
+ml/models/online_model.pkl
+ml/models/retrain_log.json
+.env

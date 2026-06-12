@@ -8,6 +8,7 @@ from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
 from reportlab.lib.enums import TA_CENTER
 from io import BytesIO
 from datetime import datetime
+from html import escape
 
 def generate_pdf_report(result: dict, subject: str, user_email: str) -> bytes:
     """
@@ -43,8 +44,8 @@ def generate_pdf_report(result: dict, subject: str, user_email: str) -> bytes:
         Spacer(1, 0.3*cm),
 
         Paragraph(f"Generated: {datetime.now().strftime('%B %d, %Y %H:%M UTC')}", body_style),
-        Paragraph(f"Analyst: {user_email}", body_style),
-        Paragraph(f"Subject: {subject or '(no subject)'}", body_style),
+        Paragraph(f"Analyst: {escape(user_email)}", body_style),
+        Paragraph(f"Subject: {escape(subject or '(no subject)')}", body_style),
         Spacer(1, 0.4*cm),
 
         Paragraph("Analysis Summary", h2_style),
@@ -78,14 +79,15 @@ def generate_pdf_report(result: dict, subject: str, user_email: str) -> bytes:
 
     if result.get("flagged_keywords"):
         story.append(Paragraph("Flagged Keywords", h2_style))
-        kw_text = "  |  ".join(result["flagged_keywords"])
+        kw_text = "  |  ".join(escape(str(keyword)) for keyword in result["flagged_keywords"])
         story.append(Paragraph(kw_text, body_style))
 
     if result.get("suspicious_urls"):
         story.append(Paragraph("Suspicious URLs", h2_style))
         url_data = [["URL", "Risk Score"]]
         for u in result["suspicious_urls"]:
-            url_data.append([u["url"][:60]+"..." if len(u["url"])>60 else u["url"],
+            display_url = u["url"][:60] + "..." if len(u["url"]) > 60 else u["url"]
+            url_data.append([escape(display_url),
                              str(u["score"])])
         url_table = Table(url_data, colWidths=[13*cm, 4*cm])
         url_table.setStyle(TableStyle([

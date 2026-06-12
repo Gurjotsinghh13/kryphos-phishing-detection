@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import axios from "axios"
 import { Shield, Mail, Lock, User, AlertCircle, ArrowRight, Eye, EyeOff } from "lucide-react"
@@ -16,10 +16,7 @@ export default function Auth() {
   const [error, setError]     = useState("")
   const [loading, setLoading] = useState(false)
   const [showPass, setShowPass] = useState(false)
-  const [mounted, setMounted] = useState(false)
   const nav = useNavigate()
-
-  useEffect(() => { setMounted(true) }, [])
 
   const submit = async () => {
     setError(""); setLoading(true)
@@ -49,7 +46,7 @@ export default function Auth() {
       <FloatingParticle style={{width:300,height:300,bottom:"5%",right:"-5%",opacity:0.3,background:"rgba(168,85,247,0.06)"}} />
       <FloatingParticle style={{width:200,height:200,top:"40%",left:"60%",opacity:0.2,background:"rgba(34,211,238,0.06)"}} />
 
-      <div className={`w-full max-w-md transition-all duration-700 ${mounted?"opacity-100 translate-y-0":"opacity-0 translate-y-8"}`}>
+      <div className="w-full max-w-md transition-all duration-700 opacity-100 translate-y-0">
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4 relative"

@@ -1,12 +1,9 @@
 import { useState, useRef } from "react"
 import api from "../api"
-import axios from "axios"
 import {
   Shield, AlertTriangle, CheckCircle, ThumbsUp, ThumbsDown,
   RefreshCw, Link, FileText, ChevronDown, ChevronUp, Zap, Globe, Hash
 } from "lucide-react"
-
-const BACKEND = import.meta.env.VITE_API_URL || ""
 
 function RiskMeter({ score }) {
   const r = 70, circ = Math.PI * r
@@ -134,22 +131,20 @@ export default function Analyzer() {
       const { data } = await api.post("/feedback", { scan_id:result.scan_id, true_label:trueLabel })
       setFeedback(trueLabel===(result.prediction==="phishing"?1:0)?"confirmed":"corrected")
       setFbMsg(data.message)
-    } catch(e) { setFbMsg("Could not submit feedback.") }
+    } catch { setFbMsg("Could not submit feedback.") }
   }
 
   const downloadReport = async () => {
     setRepLoading(true)
     try {
-      const res = await axios({
-        method:"post",
-        url:`${BACKEND}/report/pdf`,
-        data:{ subject:form.subject, body:form.body, urls:form.urls.split("\n").filter(Boolean) },
-        headers:{ Authorization:`Bearer ${localStorage.getItem("token")}` },
-        responseType:"blob"
-      })
+      const res = await api.post(
+        "/report/pdf",
+        { subject:form.subject, body:form.body, urls:form.urls.split("\n").filter(Boolean) },
+        { responseType:"blob" }
+      )
       const url = window.URL.createObjectURL(new Blob([res.data]))
       const a = document.createElement("a"); a.href=url; a.download="phishguard_report.pdf"; a.click()
-    } catch(e) { alert("Could not generate report.") }
+    } catch { alert("Could not generate report.") }
     finally { setRepLoading(false) }
   }
 

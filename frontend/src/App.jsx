@@ -4,19 +4,16 @@ import Auth from "./components/Auth"
 import Dashboard from "./components/Dashboard"
 import Analyzer from "./components/Analyzer"
 import History from "./components/History"
-import { Shield, LayoutDashboard, Search, Clock, LogOut, Activity, ChevronLeft, ChevronRight, Bell, Menu, X } from "lucide-react"
+import { Shield, LayoutDashboard, Search, Clock, LogOut, ChevronLeft, ChevronRight, Bell, Menu, X } from "lucide-react"
 
-function Sidebar({ collapsed, setCollapsed }) {
-  const location = useLocation()
-  const [mobileOpen, setMobileOpen] = useState(false)
-  const nav = [
+const nav = [
     { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
     { to: "/analyze",   icon: Search,          label: "Analyzer"  },
     { to: "/history",   icon: Clock,           label: "History"   },
-  ]
-  const logout = () => { localStorage.removeItem("token"); window.location.href = "/login" }
+]
 
-  const Content = () => (
+function SidebarContent({ collapsed, setCollapsed, pathname, logout }) {
+  return (
     <div className="flex flex-col h-full">
       <div className={`flex items-center gap-3 px-4 py-5 border-b border-[var(--border)] ${collapsed?"justify-center":""}`}>
         <div className="relative flex-shrink-0">
@@ -41,7 +38,7 @@ function Sidebar({ collapsed, setCollapsed }) {
 
       <nav className="flex-1 px-2 py-4 space-y-1">
         {nav.map(({ to, icon: Icon, label }) => {
-          const active = location.pathname === to
+          const active = pathname === to
           return (
             <NavLink key={to} to={to}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative overflow-hidden
@@ -75,11 +72,18 @@ function Sidebar({ collapsed, setCollapsed }) {
       </div>
     </div>
   )
+}
+
+function Sidebar({ collapsed, setCollapsed }) {
+  const location = useLocation()
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const logout = () => { localStorage.removeItem("token"); window.location.href = "/login" }
+  const contentProps = { collapsed, setCollapsed, pathname: location.pathname, logout }
 
   return (
     <>
       <aside className={`hidden md:flex flex-col glass border-r border-[var(--border)] h-screen sticky top-0 transition-all duration-300 flex-shrink-0 ${collapsed?"w-16":"w-56"}`}>
-        <Content />
+        <SidebarContent {...contentProps} />
       </aside>
       <button onClick={() => setMobileOpen(true)}
         className="md:hidden fixed top-4 left-4 z-50 p-2 glass rounded-lg text-cyan-400 border border-[var(--border)]">
@@ -92,7 +96,7 @@ function Sidebar({ collapsed, setCollapsed }) {
             <button onClick={() => setMobileOpen(false)} className="absolute top-4 right-4 text-[var(--text-secondary)] hover:text-white">
               <X size={18} />
             </button>
-            <Content />
+            <SidebarContent {...contentProps} />
           </aside>
         </div>
       )}

@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: kryphos-ai-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt && python -c "import nltk; nltk.download('stopwords')"
+    startCommand: gunicorn app.main:app -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 120
+    healthCheckPath: /health
+    envVars:
+      - key: ENV
+        value: production
+      - key: SECRET_KEY
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://kryphos-phishing-detection.vercel.app
+      - key: DATABASE_URL
+        value: sqlite:///./phishing.db
+      - key: LOG_LEVEL
+        value: INFO
