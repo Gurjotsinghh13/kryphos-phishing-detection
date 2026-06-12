@@ -1,3 +1,4 @@
+--only-binary=:all:
 fastapi==0.111.0
 uvicorn[standard]==0.30.1
 starlette==0.37.2
@@ -8,15 +9,15 @@ passlib==1.7.4
 bcrypt==4.0.1
 python-jose[cryptography]==3.3.0
 python-multipart==0.0.9
-pandas==2.2.2
-scikit-learn==1.5.0
+pandas==2.1.4
+scikit-learn==1.4.2
 numpy==1.26.4
 nltk==3.8.1
 tqdm==4.66.4
 requests==2.32.3
 reportlab==4.2.0
 python-dotenv==1.0.1
-scipy==1.13.1
+scipy==1.11.4
 threadpoolctl==3.5.0
 joblib==1.4.2
 click==8.1.7
