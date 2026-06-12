@@ -9,7 +9,7 @@ passlib==1.7.4
 bcrypt==4.0.1
 python-jose[cryptography]==3.3.0
 python-multipart==0.0.9
-pandas==2.1.4
+pandas>=2.3.3
 scikit-learn==1.4.2
 numpy==1.26.4
 nltk==3.8.1
